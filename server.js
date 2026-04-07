@@ -73,6 +73,7 @@ app.post('/api/bookings', async (req, res) => {
                 host: 'smtp.gmail.com',
                 port: 587,         // Changed to 587
                 secure: false,     // MUST be false for port 587
+                family: 4,         // <-- THIS IS THE MAGIC FIX: Forces IPv4
                 requireTLS: true,  // Forces a secure connection
                 auth: {
                     user: process.env.EMAIL_USER,
