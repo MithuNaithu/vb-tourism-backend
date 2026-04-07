@@ -4,7 +4,6 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 require('dotenv').config(); 
 
-
 // Import the Booking model we created earlier
 const Booking = require('./models/booking');
 
@@ -15,14 +14,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-//console.log("Mongo URI:", process.env.MONGO_URI);
-
 // 1. Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB successfully!'))
     .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// 2. Test route (to check if server is working in browser)
+// 2. GET route to fetch all bookings (to check if server is working in browser)
 app.get('/api/bookings', async (req, res) => {
     try {
         const allBookings = await Booking.find().sort({ submittedAt: -1 });
@@ -31,6 +28,7 @@ app.get('/api/bookings', async (req, res) => {
         res.status(500).json({ error: "Failed to fetch" });
     }
 });
+
 // --- DELETE A BOOKING ---
 app.delete('/api/bookings/:id', async (req, res) => {
     try {
@@ -49,6 +47,7 @@ app.delete('/api/bookings/:id', async (req, res) => {
         res.status(500).json({ message: 'Server error while deleting' });
     }
 });
+
 // 3. POST route to receive a new booking from React
 app.post('/api/bookings', async (req, res) => {
     try {
@@ -64,32 +63,44 @@ app.post('/api/bookings', async (req, res) => {
         await newBooking.save();
         console.log("✨ New booking saved to MongoDB!");
 
-       // Email Notification Setup
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,         // Changed to 587
-            secure: false,     // MUST be false for port 587
-            requireTLS: true,  // Forces a secure connection
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: process.env.EMAIL_USER, 
-            subject: `New Booking: ${service}`,
-            text: `You have a new lead!\n\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nDate: ${date}\nService: ${service}`
-        };
-
-        await transporter.sendMail(mailOptions);
-        console.log("📧 Notification email sent!");
-
+        // --- THE MAGIC FIX ---
+        // 1. SEND SUCCESS TO FRONTEND IMMEDIATELY (Stops the "Sending..." hang)
         res.status(201).json({ message: "Booking successful!" });
+
+        // 2. TRY SENDING EMAIL IN THE BACKGROUND
+        try {
+            const transporter = nodemailer.createTransport({
+                host: 'smtp.gmail.com',
+                port: 587,         // Changed to 587
+                secure: false,     // MUST be false for port 587
+                requireTLS: true,  // Forces a secure connection
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER, 
+                subject: `New Booking: ${service}`,
+                text: `You have a new lead!\n\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nDate: ${date}\nService: ${service}`
+            };
+
+            await transporter.sendMail(mailOptions);
+            console.log("📧 Notification email sent!");
+
+        } catch (emailError) {
+            // If email fails, it just logs the error without crashing the frontend!
+            console.error("❌ Email failed to send, but booking was saved:", emailError);
+        }
 
     } catch (error) {
         console.error("❌ Server Error:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        // Only send this if headers haven't already been sent
+        if (!res.headersSent) {
+            res.status(500).json({ error: "Internal Server Error" });
+        }
     }
 });
 
