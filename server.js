@@ -4,7 +4,7 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 require('dotenv').config(); 
 
-// Import the Booking model we created earlier
+// Import the Booking model
 const Booking = require('./models/booking');
 
 const app = express();
@@ -19,7 +19,7 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB successfully!'))
     .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// 2. GET route to fetch all bookings (to check if server is working in browser)
+// 2. GET route to fetch all bookings
 app.get('/api/bookings', async (req, res) => {
     try {
         const allBookings = await Booking.find().sort({ submittedAt: -1 });
@@ -33,8 +33,6 @@ app.get('/api/bookings', async (req, res) => {
 app.delete('/api/bookings/:id', async (req, res) => {
     try {
         const bookingId = req.params.id;
-        
-        // Find the booking by its ID in MongoDB and remove it
         const deletedBooking = await Booking.findByIdAndDelete(bookingId);
         
         if (!deletedBooking) {
@@ -48,33 +46,29 @@ app.delete('/api/bookings/:id', async (req, res) => {
     }
 });
 
-// 3. POST route to receive a new booking from React
+// 3. POST route to receive a new booking
 app.post('/api/bookings', async (req, res) => {
     try {
         const { name, email, phone, service, date } = req.body;
 
-        // Validation
         if (!name || !phone || !service) {
             return res.status(400).json({ error: "Required fields are missing" });
         }
 
-        // Save to Database
         const newBooking = new Booking({ name, email, phone, service, date });
         await newBooking.save();
         console.log("✨ New booking saved to MongoDB!");
 
-        // --- THE MAGIC FIX ---
-        // 1. SEND SUCCESS TO FRONTEND IMMEDIATELY (Stops the "Sending..." hang)
+        // Send success to frontend immediately
         res.status(201).json({ message: "Booking successful!" });
 
-        // 2. TRY SENDING EMAIL IN THE BACKGROUND
+        // TRY SENDING EMAIL IN THE BACKGROUND
         try {
             const transporter = nodemailer.createTransport({
                 host: 'smtp.gmail.com',
-                port: 587,         // Changed to 587
-                secure: false,     // MUST be false for port 587
-                family: 4,         // <-- THIS IS THE MAGIC FIX: Forces IPv4
-                requireTLS: true,  // Forces a secure connection
+                port: 465,         // Most stable for Gmail
+                secure: true,      // true for 465
+                family: 4,         // Forces IPv4
                 auth: {
                     user: process.env.EMAIL_USER,
                     pass: process.env.EMAIL_PASS
@@ -92,13 +86,11 @@ app.post('/api/bookings', async (req, res) => {
             console.log("📧 Notification email sent!");
 
         } catch (emailError) {
-            // If email fails, it just logs the error without crashing the frontend!
             console.error("❌ Email failed to send, but booking was saved:", emailError);
         }
 
     } catch (error) {
         console.error("❌ Server Error:", error);
-        // Only send this if headers haven't already been sent
         if (!res.headersSent) {
             res.status(500).json({ error: "Internal Server Error" });
         }
