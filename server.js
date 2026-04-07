@@ -1,181 +1,135 @@
-// ===============================
-// VB Tourism Backend - server.js
-// ===============================
-
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
-// Import Booking Model
-const Booking = require("./models/booking");
-
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// ===============================
 // Middleware
-// ===============================
 app.use(cors());
 app.use(express.json());
 
-// ===============================
+// =============================
 // MongoDB Connection
-// ===============================
+// =============================
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("✅ Connected to MongoDB successfully!");
+    console.log("MongoDB Connected Successfully");
   })
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.log("MongoDB Error:", err);
   });
 
-// ===============================
-// Email Transporter (Render Stable)
-// ===============================
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.log("⚠️ Email credentials missing in environment variables");
-}
+// =============================
+// Booking Schema
+// =============================
+const bookingSchema = new mongoose.Schema({
+  name: String,
+  phone: String,
+  email: String,
+  date: String,
+  message: String,
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
+const Booking = mongoose.model("Booking", bookingSchema);
+
+// =============================
+// Brevo Email Transporter
+// =============================
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  family: 4, // Forces IPv4 (important for Render)
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 10000,
 });
 
-// Verify Email Transporter
+// Check transporter
 transporter.verify(function (error, success) {
   if (error) {
-    console.log("❌ Email transporter error:", error.message);
+    console.log("Email Server Error:", error);
   } else {
-    console.log("✅ Email server is ready");
+    console.log("Email Server is Ready");
   }
 });
 
-// ===============================
-// Root Route
-// ===============================
-app.get("/", (req, res) => {
-  res.send("VB Tourism Backend is Running 🚀");
-});
-
-// ===============================
-// Get All Bookings
-// ===============================
-app.get("/api/bookings", async (req, res) => {
-  try {
-    const bookings = await Booking.find().sort({ submittedAt: -1 });
-    res.json(bookings);
-  } catch (error) {
-    console.error("❌ Fetch Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch bookings" });
-  }
-});
-
-// ===============================
-// Delete Booking
-// ===============================
-app.delete("/api/bookings/:id", async (req, res) => {
-  try {
-    const bookingId = req.params.id;
-
-    const deletedBooking = await Booking.findByIdAndDelete(bookingId);
-
-    if (!deletedBooking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    res.json({ message: "Booking deleted successfully!" });
-  } catch (error) {
-    console.error("❌ Delete Error:", error.message);
-    res.status(500).json({ message: "Server error while deleting booking" });
-  }
-});
-
-// ===============================
-// Create Booking
-// ===============================
+// =============================
+// Booking API
+// =============================
 app.post("/api/bookings", async (req, res) => {
   try {
-    const { name, email, phone, service, date } = req.body;
-
-    // Validation
-    if (!name || !phone || !service) {
-      return res.status(400).json({
-        error: "Name, Phone and Service are required",
-      });
-    }
-
-    // Save Booking
-    const newBooking = new Booking({
-      name,
-      email,
-      phone,
-      service,
-      date,
-    });
-
+    // Save booking
+    const newBooking = new Booking(req.body);
     await newBooking.save();
 
-    console.log("✨ New booking saved to MongoDB!");
+    console.log("Booking saved");
 
-    // Send response immediately
-    res.status(201).json({
-      message: "Booking successful!",
+    // Send Email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_USER,
+      subject: "New Booking Received - VB Tourism",
+      html: `
+        <h2>New Booking Details</h2>
+        <p><b>Name:</b> ${req.body.name}</p>
+        <p><b>Phone:</b> ${req.body.phone}</p>
+        <p><b>Email:</b> ${req.body.email}</p>
+        <p><b>Date:</b> ${req.body.date}</p>
+        <p><b>Message:</b> ${req.body.message}</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log("Email sent successfully");
+
+    res.status(200).json({
+      success: true,
+      message: "Booking saved and email sent",
     });
-
-    // ===============================
-    // Send Email in Background
-    // ===============================
-    try {
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_USER,
-        subject: `📢 New Booking: ${service}`,
-        text: `
-New Booking Received
-
-Name: ${name}
-Phone: ${phone}
-Email: ${email}
-Date: ${date}
-Service: ${service}
-
-Valiyaparamba Backwater Tourism Website
-        `,
-      };
-
-      await transporter.sendMail(mailOptions);
-
-      console.log("📧 Email sent successfully!");
-    } catch (emailError) {
-      console.error(
-        "❌ Email failed but booking saved:",
-        emailError.message
-      );
-    }
   } catch (error) {
-    console.error("❌ Server Error:", error.message);
+    console.log("Server Error:", error);
 
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: "Internal Server Error",
-      });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Booking saved but email failed",
+      error: error.message,
+    });
   }
 });
 
-// ===============================
-// Start Server
-// ===============================
+// =============================
+// Admin Booking List
+// =============================
+app.get("/api/bookings", async (req, res) => {
+  try {
+    const bookings = await Booking.find().sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+// =============================
+// Root
+// =============================
+app.get("/", (req, res) => {
+  res.send("VB Tourism Backend Running");
+});
+
+// =============================
+// Server Start
+// =============================
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server is live on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
