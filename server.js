@@ -1,103 +1,171 @@
-const express = require('express');
-const mongoose = require('mongoose'); 
-const cors = require('cors');
-const nodemailer = require('nodemailer');
-require('dotenv').config(); 
+```js
+// ===============================
+// VB Tourism Backend - server.js
+// ===============================
 
-// Import the Booking model
-const Booking = require('./models/booking');
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const nodemailer = require("nodemailer");
+require("dotenv").config();
+
+// Import Booking Model
+const Booking = require("./models/booking");
 
 const app = express();
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 
+// ===============================
 // Middleware
+// ===============================
 app.use(cors());
 app.use(express.json());
 
-// 1. Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ Connected to MongoDB successfully!'))
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
+// ===============================
+// MongoDB Connection
+// ===============================
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ Connected to MongoDB successfully!");
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err.message);
+  });
+// ===============================
+// Email Transporter
+// ===============================
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  console.log("⚠️ Email credentials missing in environment variables");
+}
 
-// 2. GET route to fetch all bookings
-app.get('/api/bookings', async (req, res) => {
-    try {
-        const allBookings = await Booking.find().sort({ submittedAt: -1 });
-        res.json(allBookings);
-    } catch (error) {
-        res.status(500).json({ error: "Failed to fetch" });
-    }
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,         // Use port 465 for a more stable Render connection
+  secure: true,      // MUST be true for port 465
+  family: 4,         // THE MAGIC FIX: Forces IPv4 to bypass Render's network block
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+// ===============================
+// Root Route
+// ===============================
+app.get("/", (req, res) => {
+  res.send("VB Tourism Backend is Running 🚀");
 });
 
-// --- DELETE A BOOKING ---
-app.delete('/api/bookings/:id', async (req, res) => {
-    try {
-        const bookingId = req.params.id;
-        const deletedBooking = await Booking.findByIdAndDelete(bookingId);
-        
-        if (!deletedBooking) {
-            return res.status(404).json({ message: 'Booking not found' });
-        }
-        
-        res.status(200).json({ message: 'Booking deleted successfully!' });
-    } catch (error) {
-        console.error("Delete Error:", error);
-        res.status(500).json({ message: 'Server error while deleting' });
-    }
+// ===============================
+// Get All Bookings
+// ===============================
+app.get("/api/bookings", async (req, res) => {
+  try {
+    const bookings = await Booking.find().sort({ submittedAt: -1 });
+    res.json(bookings);
+  } catch (error) {
+    console.error("❌ Fetch Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
 });
 
-// 3. POST route to receive a new booking
-app.post('/api/bookings', async (req, res) => {
-    try {
-        const { name, email, phone, service, date } = req.body;
+// ===============================
+// Delete Booking
+// ===============================
+app.delete("/api/bookings/:id", async (req, res) => {
+  try {
+    const bookingId = req.params.id;
 
-        if (!name || !phone || !service) {
-            return res.status(400).json({ error: "Required fields are missing" });
-        }
+    const deletedBooking = await Booking.findByIdAndDelete(bookingId);
 
-        const newBooking = new Booking({ name, email, phone, service, date });
-        await newBooking.save();
-        console.log("✨ New booking saved to MongoDB!");
-
-        // Send success to frontend immediately
-        res.status(201).json({ message: "Booking successful!" });
-
-        // TRY SENDING EMAIL IN THE BACKGROUND
-        try {
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 465,         // Most stable for Gmail
-                secure: true,      // true for 465
-                family: 4,         // Forces IPv4
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
-            });
-
-            const mailOptions = {
-                from: process.env.EMAIL_USER,
-                to: process.env.EMAIL_USER, 
-                subject: `New Booking: ${service}`,
-                text: `You have a new lead!\n\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nDate: ${date}\nService: ${service}`
-            };
-
-            await transporter.sendMail(mailOptions);
-            console.log("📧 Notification email sent!");
-
-        } catch (emailError) {
-            console.error("❌ Email failed to send, but booking was saved:", emailError);
-        }
-
-    } catch (error) {
-        console.error("❌ Server Error:", error);
-        if (!res.headersSent) {
-            res.status(500).json({ error: "Internal Server Error" });
-        }
+    if (!deletedBooking) {
+      return res.status(404).json({ message: "Booking not found" });
     }
+
+    res.json({ message: "Booking deleted successfully!" });
+  } catch (error) {
+    console.error("❌ Delete Error:", error.message);
+    res.status(500).json({ message: "Server error while deleting booking" });
+  }
 });
 
-// 4. Start the Server
+// ===============================
+// Create Booking
+// ===============================
+app.post("/api/bookings", async (req, res) => {
+  try {
+    const { name, email, phone, service, date } = req.body;
+
+    // Validation
+    if (!name || !phone || !service) {
+      return res.status(400).json({
+        error: "Name, Phone and Service are required",
+      });
+    }
+
+    // Save Booking
+    const newBooking = new Booking({
+      name,
+      email,
+      phone,
+      service,
+      date,
+    });
+
+    await newBooking.save();
+
+    console.log("✨ New booking saved to MongoDB!");
+
+    // Send response immediately
+    res.status(201).json({
+      message: "Booking successful!",
+    });
+
+    // ===============================
+    // Send Email in Background
+    // ===============================
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: process.env.EMAIL_USER,
+        subject: `📢 New Booking: ${service}`,
+        text: `
+New Booking Received
+
+Name: ${name}
+Phone: ${phone}
+Email: ${email}
+Date: ${date}
+Service: ${service}
+
+Valiyaparamba Backwater Tourism Website
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      console.log("📧 Email sent successfully!");
+    } catch (emailError) {
+      console.error(
+        "❌ Email failed but booking saved:",
+        emailError.message
+      );
+    }
+  } catch (error) {
+    console.error("❌ Server Error:", error.message);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Internal Server Error",
+      });
+    }
+  }
+});
+
+// ===============================
+// Start Server
+// ===============================
 app.listen(PORT, () => {
-    console.log(`🚀 Server is live on http://localhost:${PORT}`);
+  console.log(`🚀 Server is live on http://localhost:${PORT}`);
 });
+```
