@@ -1,3 +1,7 @@
+// ===============================
+// VB Tourism Backend - server.js
+// ===============================
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -29,22 +33,25 @@ mongoose
   });
 
 // ===============================
-// Email Transporter (Stable Gmail Setup)
+// Email Transporter (Render Stable)
 // ===============================
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
   console.log("⚠️ Email credentials missing in environment variables");
 }
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  family: 4, // Forces IPv4 (important for Render)
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 10000, // 10 seconds timeout
+  connectionTimeout: 10000,
 });
 
-// Verify transporter at startup
+// Verify Email Transporter
 transporter.verify(function (error, success) {
   if (error) {
     console.log("❌ Email transporter error:", error.message);
@@ -132,15 +139,18 @@ app.post("/api/bookings", async (req, res) => {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: process.env.EMAIL_USER,
-        subject: "📢 New Booking: " + service,
-        text:
-          "New Booking Received\n\n" +
-          "Name: " + name + "\n" +
-          "Phone: " + phone + "\n" +
-          "Email: " + email + "\n" +
-          "Date: " + date + "\n" +
-          "Service: " + service + "\n\n" +
-          "Valiyaparamba Backwater Tourism Website",
+        subject: `📢 New Booking: ${service}`,
+        text: `
+New Booking Received
+
+Name: ${name}
+Phone: ${phone}
+Email: ${email}
+Date: ${date}
+Service: ${service}
+
+Valiyaparamba Backwater Tourism Website
+        `,
       };
 
       await transporter.sendMail(mailOptions);
@@ -167,5 +177,5 @@ app.post("/api/bookings", async (req, res) => {
 // Start Server
 // ===============================
 app.listen(PORT, () => {
-  console.log(`🚀 Server is live on http://localhost:${PORT}`);
+  console.log(`🚀 Server is live on port ${PORT}`);
 });
