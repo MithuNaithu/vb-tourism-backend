@@ -1,8 +1,3 @@
-```js
-// ===============================
-// VB Tourism Backend - server.js
-// ===============================
-
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -32,23 +27,32 @@ mongoose
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err.message);
   });
+
 // ===============================
-// Email Transporter
+// Email Transporter (Stable Gmail Setup)
 // ===============================
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
   console.log("⚠️ Email credentials missing in environment variables");
 }
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,         // Use port 465 for a more stable Render connection
-  secure: true,      // MUST be true for port 465
-  family: 4,         // THE MAGIC FIX: Forces IPv4 to bypass Render's network block
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 10000, // 10 seconds timeout
 });
+
+// Verify transporter at startup
+transporter.verify(function (error, success) {
+  if (error) {
+    console.log("❌ Email transporter error:", error.message);
+  } else {
+    console.log("✅ Email server is ready");
+  }
+});
+
 // ===============================
 // Root Route
 // ===============================
@@ -128,18 +132,15 @@ app.post("/api/bookings", async (req, res) => {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: process.env.EMAIL_USER,
-        subject: `📢 New Booking: ${service}`,
-        text: `
-New Booking Received
-
-Name: ${name}
-Phone: ${phone}
-Email: ${email}
-Date: ${date}
-Service: ${service}
-
-Valiyaparamba Backwater Tourism Website
-        `,
+        subject: "📢 New Booking: " + service,
+        text:
+          "New Booking Received\n\n" +
+          "Name: " + name + "\n" +
+          "Phone: " + phone + "\n" +
+          "Email: " + email + "\n" +
+          "Date: " + date + "\n" +
+          "Service: " + service + "\n\n" +
+          "Valiyaparamba Backwater Tourism Website",
       };
 
       await transporter.sendMail(mailOptions);
@@ -168,4 +169,3 @@ Valiyaparamba Backwater Tourism Website
 app.listen(PORT, () => {
   console.log(`🚀 Server is live on http://localhost:${PORT}`);
 });
-```
