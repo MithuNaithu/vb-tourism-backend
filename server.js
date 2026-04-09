@@ -27,7 +27,7 @@ const bookingSchema = new mongoose.Schema({
   email: String,
   service: String,
   date: String,
-  submittedAt: { // Changed to submittedAt to match your React frontend logic
+  submittedAt: {
     type: Date,
     default: Date.now,
   },
@@ -40,41 +40,40 @@ const Booking = mongoose.model("Booking", bookingSchema);
 // =============================
 const transporter = nodemailer.createTransport({
   host: "smtp-relay.brevo.com",
-  port: 2525, // CRITICAL FIX: Port 2525 bypasses Render's Port 587 block!
+  port: 2525,
   secure: false,
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Make sure this is your Brevo SMTP Master Password
+    pass: process.env.EMAIL_PASS,
   },
 });
 
-// Check transporter in the background
+// Verify Transporter
 transporter.verify(function (error, success) {
   if (error) {
-    console.log("⚠️ Brevo Server Note:", error.message);
+    console.log("⚠️ Email Server Note:", error.message);
   } else {
-    console.log("📧 Brevo Email Server is Ready");
+    console.log("📧 Email Server is Ready"); 
   }
 });
 
 // =============================
-// API 1: Create Booking
+// API Routes
 // =============================
+
+// 1. Create Booking
 app.post("/api/bookings", async (req, res) => {
   try {
-    // 1. Save booking to database
     const newBooking = new Booking(req.body);
     await newBooking.save();
     console.log("✨ Booking saved to MongoDB");
 
-    // 2. SEND SUCCESS IMMEDIATELY (Prevents UI freezing on the website)
     res.status(201).json({ success: true, message: "Booking saved" });
 
-    // 3. Send Email in Background
     try {
       const mailOptions = {
         from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_USER, // Sending notification to yourself
+        to: process.env.EMAIL_USER, 
         subject: `📢 New Booking: ${req.body.service}`,
         html: `
           <h2>New Website Enquiry</h2>
@@ -87,11 +86,10 @@ app.post("/api/bookings", async (req, res) => {
       };
 
       await transporter.sendMail(mailOptions);
-      console.log("📧 Brevo Email sent successfully");
+      console.log("📧 Email sent successfully");
     } catch (emailError) {
       console.log("❌ Email failed in background:", emailError.message);
     }
-
   } catch (error) {
     console.log("❌ Server Error:", error);
     if (!res.headersSent) {
@@ -100,9 +98,7 @@ app.post("/api/bookings", async (req, res) => {
   }
 });
 
-// =============================
-// API 2: Admin Booking List
-// =============================
+// 2. Admin Booking List
 app.get("/api/bookings", async (req, res) => {
   try {
     const bookings = await Booking.find().sort({ submittedAt: -1 });
@@ -112,9 +108,7 @@ app.get("/api/bookings", async (req, res) => {
   }
 });
 
-// =============================
-// API 3: Delete Booking (RESTORED!)
-// =============================
+// 3. Delete Booking
 app.delete("/api/bookings/:id", async (req, res) => {
   try {
     const bookingId = req.params.id;
@@ -131,18 +125,13 @@ app.delete("/api/bookings/:id", async (req, res) => {
   }
 });
 
-// =============================
-// Root
-// =============================
+// Root Route
 app.get("/", (req, res) => {
   res.send("VB Tourism Backend Running 🚀");
 });
 
-// =============================
 // Server Start
-// =============================
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
