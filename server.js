@@ -1,5 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const geoip = require('geoip-lite');
+const Visitor = require('./models/visitor'); // Make sure the case matches your filename exactly
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
@@ -53,7 +55,7 @@ transporter.verify(function (error, success) {
   if (error) {
     console.log("⚠️ Email Server Note:", error.message);
   } else {
-    console.log("📧 Email Server is Ready"); 
+    console.log("📧 Email Server is Ready");
   }
 });
 
@@ -73,7 +75,7 @@ app.post("/api/bookings", async (req, res) => {
     try {
       const mailOptions = {
         from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_USER, 
+        to: process.env.EMAIL_USER,
         subject: `📢 New Booking: ${req.body.service}`,
         html: `
           <h2>New Website Enquiry</h2>
@@ -113,16 +115,52 @@ app.delete("/api/bookings/:id", async (req, res) => {
   try {
     const bookingId = req.params.id;
     const deletedBooking = await Booking.findByIdAndDelete(bookingId);
-    
+
     if (!deletedBooking) {
       return res.status(404).json({ message: "Booking not found" });
     }
-    
+
     res.status(200).json({ message: "Booking deleted successfully!" });
   } catch (error) {
     console.error("❌ Delete Error:", error.message);
     res.status(500).json({ message: "Server error while deleting" });
   }
+});
+// --- VISITOR COUNTER & LOCATION TRACKING ---
+app.get('/api/visit', async (req, res) => {
+    try {
+        // 1. Get the true IP address (Handles Render's proxy and local testing)
+        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        
+        // Clean the IP if it comes as a list
+        if (ip && ip.includes(',')) {
+            ip = ip.split(',')[0].trim();
+        }
+
+        // 2. Look up the location using the IP
+        const geo = geoip.lookup(ip);
+        
+        // If testing locally (localhost/::1), geoip might return null. We set fallbacks.
+        const city = geo ? geo.city : 'Local/Unknown';
+        const country = geo ? geo.country : 'Local/Unknown';
+
+        // 3. Save this visitor's data to MongoDB
+        await Visitor.create({ 
+            ip: ip, 
+            city: city, 
+            country: country 
+        });
+
+        // 4. Count all documents in the Visitor collection
+        const totalVisitors = await Visitor.countDocuments();
+
+        // 5. Send the grand total back to the React frontend
+        res.json({ count: totalVisitors });
+
+    } catch (error) {
+        console.error("Visitor tracking error:", error);
+        res.status(500).json({ error: "Failed to track visitor" });
+    }
 });
 
 // Root Route
