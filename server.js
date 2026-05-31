@@ -163,6 +163,15 @@ app.get('/api/visit', async (req, res) => {
     }
 });
 
+// 6. Admin Visitor List
+app.get("/api/admin/visitors", async (req, res) => {
+  try {
+    const visitors = await Visitor.find().sort({ visitedAt: -1 }).limit(100);
+    res.json(visitors);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch visitors" });
+  }
+});
 // Root Route
 app.get("/", (req, res) => {
   res.send("VB Tourism Backend Running 🚀");
