@@ -9,7 +9,11 @@ require("dotenv").config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['https://www.valiyaparambatourism.com', 'https://valiyaparambatourism.com', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // =============================
@@ -21,7 +25,7 @@ mongoose
   .catch((err) => console.log("❌ MongoDB Error:", err));
 
 // =============================
-// Booking Schema
+// Booking Schema & Model
 // =============================
 const bookingSchema = new mongoose.Schema({
   name: String,
@@ -38,17 +42,9 @@ const bookingSchema = new mongoose.Schema({
 const Booking = mongoose.model("Booking", bookingSchema);
 
 // =============================
-// Brevo Email Transporter
+// Email Transporter Setup
 // =============================
-const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 2525,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// (Ensure your local code contains your specific nodemailer.createTransport configuration here)
 
 // Verify Transporter
 transporter.verify(function (error, success) {
@@ -60,7 +56,7 @@ transporter.verify(function (error, success) {
 });
 
 // =============================
-// API Routes
+// API Routes (Bookings)
 // =============================
 
 // 1. Create Booking
@@ -126,44 +122,40 @@ app.delete("/api/bookings/:id", async (req, res) => {
     res.status(500).json({ message: "Server error while deleting" });
   }
 });
-// --- VISITOR COUNTER & LOCATION TRACKING ---
+
+// =============================
+// API Routes (Visitor Tracking)
+// =============================
+
+// 4. Record a Live Visit
 app.get('/api/visit', async (req, res) => {
-    try {
-        // 1. Get the true IP address (Handles Render's proxy and local testing)
-        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        
-        // Clean the IP if it comes as a list
-        if (ip && ip.includes(',')) {
-            ip = ip.split(',')[0].trim();
-        }
+  try {
+    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-        // 2. Look up the location using the IP
-        const geo = geoip.lookup(ip);
-        
-        // If testing locally (localhost/::1), geoip might return null. We set fallbacks.
-        const city = geo ? geo.city : 'Local/Unknown';
-        const country = geo ? geo.country : 'Local/Unknown';
-
-        // 3. Save this visitor's data to MongoDB
-        await Visitor.create({ 
-            ip: ip, 
-            city: city, 
-            country: country 
-        });
-
-        // 4. Count all documents in the Visitor collection
-        const totalVisitors = await Visitor.countDocuments();
-
-        // 5. Send the grand total back to the React frontend
-        res.json({ count: totalVisitors });
-
-    } catch (error) {
-        console.error("Visitor tracking error:", error);
-        res.status(500).json({ error: "Failed to track visitor" });
+    if (ip && ip.includes(',')) {
+      ip = ip.split(',')[0].trim();
     }
+
+    const geo = geoip.lookup(ip);
+    const city = geo ? geo.city : 'Local/Unknown';
+    const country = geo ? geo.country : 'Local/Unknown';
+
+    await Visitor.create({
+      ip: ip,
+      city: city,
+      country: country
+    });
+
+    const totalVisitors = await Visitor.countDocuments();
+    res.json({ count: totalVisitors });
+
+  } catch (error) {
+    console.error("Visitor tracking error:", error);
+    res.status(500).json({ error: "Failed to track visitor" });
+  }
 });
 
-// 6. Admin Visitor List
+// 5. Admin Visitor Log List
 app.get("/api/admin/visitors", async (req, res) => {
   try {
     const visitors = await Visitor.find().sort({ visitedAt: -1 }).limit(100);
@@ -172,12 +164,37 @@ app.get("/api/admin/visitors", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch visitors" });
   }
 });
-// Root Route
+
+// 6. Delete a Single Visitor Log
+app.delete("/api/admin/visitors/:id", async (req, res) => {
+  try {
+    await Visitor.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Log deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete log" });
+  }
+});
+
+// 7. Clear ALL Visitor Logs
+app.delete("/api/admin/visitors", async (req, res) => {
+  try {
+    await Visitor.deleteMany({});
+    res.status(200).json({ message: "All visitor logs cleared" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to clear logs" });
+  }
+});
+
+// =============================
+// System Base Routes
+// =============================
+
+// Root Status Route
 app.get("/", (req, res) => {
   res.send("VB Tourism Backend Running 🚀");
 });
 
-// Server Start
+// Server Initialization
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
